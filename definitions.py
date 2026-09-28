@@ -103,6 +103,26 @@ _FQ = [(n, re.compile(rx)) for n, rx in FREQUENCY]
 frequency = lambda s: next((n for n, rx in _FQ if rx.search((s or "").lower())), None)
 CONTINUOUS = re.compile(r"continu|ongoing|indefinite|no break|year[- ]round|no cycl|non[- ]?stop|without (a )?break|no off")
 
+# ---------------------------------------------------------------- comparison between models
+_NULLS = {"", "null", "unknown", "not_applicable", "not_mentioned", "none", "n/a", "not_stated", "nan", "[]", "didnt_compare"}
+
+
+def norm(field, value):
+    """Comparable form of a model's value: recoded category, canonical peptide, or presence for side effects."""
+    v = ("|".join(map(str, value)) if isinstance(value, list) else str(value if value is not None else "")).strip().lower()
+    if field != "side_effects": v = v.split("|")[0].strip()
+    if v in _NULLS: return ""
+    if field == "substance_name":
+        c = classify(v); return c[1] if isinstance(c, tuple) else c or ""
+    if field == "side_effects": return "|".join(sorted(g for g in ae_groups(v) if g != "Other / unclassified")) or "present"
+    if field in ("is_patient_post", "aware_fda_status", "customs_concern"): return {"yes": "true", "no": "false"}.get(v, v)
+    if field in ("age", "cycle_duration_weeks", "cost_amount"):
+        try: return str(round(float(v), 1))
+        except ValueError: return v
+    try: return RECODE[field](v) or "" if field in RECODE else v
+    except Exception: return v
+
+
 # ---------------------------------------------------------------- categorical recodes (value -> reported category; None = not addressed)
 def _keep(*vals, **alias):
     return lambda v: alias.get(v, v if v in vals else None)
@@ -116,7 +136,7 @@ RECODE = {
     "pain_reduction": _keep("mild", "moderate", "significant", "complete"),
     "functional_improvement": _keep("yes", "partial", "no"),
     "peptide_categorization": _keep("supplement", "medication", "experimental_therapy", "alternative_medicine", "performance_enhancer",
-                                    "aesthetic_enhancement", biohack="biohacking_tool", aesthetic="aesthetic_enhancement", cosmetic="aesthetic_enhancement"),
+                                    "aesthetic_enhancement", "biohacking_tool", biohack="biohacking_tool", aesthetic="aesthetic_enhancement", cosmetic="aesthetic_enhancement"),
     "evidence_basis_cited": _keep("published_studies", "mechanism_or_biology", "community_testimony", "personal_experiment", "doctor_recommendation",
                                   research="published_studies", clinical_trials="published_studies", studies="published_studies"),
     "trust_level": _keep("high", "moderate", "skeptical", "experimental"),

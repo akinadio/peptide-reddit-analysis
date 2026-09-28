@@ -1,8 +1,8 @@
-"""Step 3 — Gemini 2.5 Flash-Lite (Batch API) for records without usable primary output.
+"""Step 3 — independent second extraction of every record with Gemini 2.5 Flash-Lite (Batch API, identical prompt).
 
-Uses the identical prompt. Resumable: state is kept in data/gemini_state.json.
+Resumable: state is kept in data/gemini_state.json; results are written to data/gemini_results/*.jsonl.
 
-    python 03_gemini_batch.py prepare     # build request files for records with no usable primary JSON
+    python 03_gemini_batch.py prepare     # one request per record sent to the primary model
     python 03_gemini_batch.py run         # submit, poll and download until finished
 """
 import csv, json, os, sys, time
@@ -16,15 +16,8 @@ state = lambda: json.load(open(STATE)) if STATE.exists() else {"chunks": []}
 save = lambda s: json.dump(s, open(STATE, "w"), indent=1)
 
 
-def usable(rid):
-    p = C.PRIMARY_DIR / f"{rid}.json"
-    try: return p.exists() and bool(json.loads(p.read_text()))
-    except Exception: return False
-
-
 def prepare(chunk=7000):
-    sent = {p.name.split(".")[0] for p in C.PRIMARY_DIR.iterdir()}          # every record sent to the primary model
-    todo = {r for r in sent if not usable(r)}
+    todo = {p.name.split(".")[0] for p in C.PRIMARY_DIR.iterdir()}          # every record sent to the primary model
     REQ.mkdir(parents=True, exist_ok=True); s, buf = state(), []
     csv.field_size_limit(1 << 28)
     def flush():
@@ -66,7 +59,7 @@ def run(poll=60, max_active=10):
         for c in s["chunks"]:
             if c["status"] == "prepared" and active < max_active:
                 up = client.files.upload(file=c["file"], config=types.UploadFileConfig(mime_type="jsonl"))
-                c.update(status="submitted", job=client.batches.create(model=f"models/{C.FALLBACK_MODEL}", src=up.name).name)
+                c.update(status="submitted", job=client.batches.create(model=f"models/{C.SECOND_MODEL}", src=up.name).name)
                 active += 1
         save(s); print(time.strftime("%H:%M"), {k: sum(c["status"] == k for c in s["chunks"]) for k in ("prepared", "submitted", "done")})
         time.sleep(poll)

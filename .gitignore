@@ -4,4 +4,3 @@ __pycache__/
 .DS_Store
 data/*
 !data/sample_100k.csv
-!data/validation_sample_ids.csv
