@@ -1,9 +1,10 @@
-"""Step 5 — all numbers reported in the Results, Table 1, Table 2 and the figures -> data/results.json.
+"""Step 6 — all numbers reported in the Results, Table 1, Table 2 and the figures -> data/results.json.
 
-Analysis population: records from included accounts that describe the author's own peptide use, excluding records
-whose named substance is not a peptide. Each field's denominator is the records that addressed it.
+Analysis population: the analytic sample built by 05_build_dataset.py (one record per user; see data/flow.json).
+Each field's denominator is the records that addressed it. Figure 1 counts discussion volume: every retrieved post
+and comment from included accounts after removal of reposted duplicates, by calendar year.
 
-    python 05_analyze.py
+    python 06_analyze.py
 """
 import json, math, re
 from collections import Counter
@@ -13,8 +14,8 @@ from definitions import RECODE, ae_groups, frequency, CONTINUOUS
 
 con = duckdb.connect(str(C.DB), read_only=True)
 allrec = con.execute("select * exclude (notable_quote) from records").df()
-clean = allrec[~allrec.excluded_account]
-X = clean[clean.self_use & (clean.peptide_class != "nonpeptide")].copy()
+volume = allrec[~allrec.excluded_account & ~allrec.duplicate]
+X = allrec[allrec.analytic].copy()
 first = lambda s: s.fillna("").str.lower().str.split("|").str[0].str.strip()
 
 
@@ -36,12 +37,13 @@ def wilson(k, n, z=1.96):
 
 R = {}
 # ---- cohort and flow
-R["flow"] = {"records": len(allrec), "excluded_account_records": int(allrec.excluded_account.sum()),
-             "excluded_accounts": int(allrec[allrec.excluded_account].author.nunique()), "analysed": len(clean),
-             "unique_accounts": int(clean.author.nunique()), "self_use": int(clean.self_use.sum()),
-             "peptide_named": int((clean.self_use & (clean.peptide_class == "peptide")).sum()),
-             "no_peptide_named": int((clean.self_use & (clean.peptide_class == "unspecified")).sum())}
-R["annual_records"] = clean.groupby("yr").size().to_dict()
+R["flow"] = json.loads(C.FLOW.read_text()) | {
+    "excluded_accounts": int(allrec[allrec.excluded_account].author.nunique()),
+    "peptide_named": int((X.peptide_class == "peptide").sum()), "no_peptide_named": int((X.peptide_class == "unspecified").sum()),
+    "peptide_inherited_from_post": int((X.peptide_class.eq("peptide") & X.inherited).sum())}
+R["annual_records"] = {int(k): int(v) for k, v in volume.groupby("yr").size().items()}
+y0, y1 = 2015, 2025                                             # first and last full calendar years
+R["discussion_growth"] = {"from": y0, "to": y1, "cagr_pct": round(((R["annual_records"][y1] / R["annual_records"][y0]) ** (1 / (y1 - y0)) - 1) * 100, 1)}
 R["age"], R["sex"] = numeric("age", 13, 95), dist("sex")
 # ---- categorical fields
 R["fields"] = {f: dist(f) for f in RECODE if f in X}

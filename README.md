@@ -15,16 +15,32 @@ figure reported in the paper.
 
 | Step | Script | What it does |
 |---|---|---|
-| 1 | `01_scrape.py` | Retrieves posts and comments (Nov 2014 – Jun 2026) from the Arctic Shift Reddit archive |
+| 1 | `01_scrape.py` | Retrieves posts and comments from the Arctic Shift Reddit archive (the study period, Nov 2014 – Jun 2026, is applied in `corpus.py`) |
 | 2 | `02_extract.py` | Extraction with GPT-4o-mini |
 | 3 | `03_gemini_batch.py` | Independent extraction with Gemini 2.5 Flash-Lite (Batch API) |
 | 4 | `04_adjudicate.py` | Compares the two, adjudicates disagreements with Claude Sonnet 4.6 (Batch API), writes the consensus |
-| 5 | `05_build_dataset.py` | Keeps the eight communities, flags bot/moderator/deleted accounts, classifies peptides |
+| 5 | `05_build_dataset.py` | Classifies peptides, applies the exclusions in order and keeps one record per user → `data/flow.json` |
 | 6 | `06_analyze.py` | All reported statistics, Table 1, Table 2 and figure data → `data/results.json` |
-| 7 | `07_figures.py` | Figures 1–3 |
+| 7 | `07_figures.py` | Figures 1–3 and Supplementary Figure 1 (record flow) |
+| 8 | `08_validation.py` | Model agreement, omissions, adjudication and manual-review agreement → `data/validation.json` |
 
-Shared definitions: `config.py` (paths, communities, models, compared fields), `prompt.py` (prompt and schema),
-`definitions.py` (peptide categories, adverse-event groups, recodes, value comparison).
+Shared definitions: `config.py` (paths, communities, study period, models, compared fields), `corpus.py` (corpus loading,
+account and duplicate exclusions), `prompt.py` (prompt and schema), `definitions.py` (peptide categories, adverse-event
+groups, recodes, value comparison).
+
+## Study population
+
+Records are counted at the first exclusion that applies (Supplementary Figure 1, `data/flow.json`):
+
+1. records from deleted, AutoModerator, bot and moderator-team accounts;
+2. identical text reposted by the same account (earliest copy kept);
+3. records with no extraction output from any model;
+4. records not describing the author's own peptide use;
+5. records whose named substance is not a peptide;
+6. additional records from users with more than one remaining record (the earliest is kept).
+
+Exclusions 1–2 are applied before extraction. The analytic sample has one post or comment per user, so the unit of
+analysis is the user. Comments that name no substance inherit the substance of the post they reply to.
 
 ## Run
 
@@ -33,7 +49,7 @@ python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env          # add OPENAI_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY
 python 01_scrape.py
-python 02_extract.py --limit 100     # smoke test, then without --limit
+python 02_extract.py --limit 100     # smoke test, then without --limit (already-extracted records are skipped)
 python 03_gemini_batch.py prepare && python 03_gemini_batch.py run
 python 04_adjudicate.py estimate     # number of disputed records and cost estimate
 python 04_adjudicate.py submit       # then re-run `collect` until all batches are collected
@@ -42,7 +58,13 @@ python 04_adjudicate.py consensus
 python 05_build_dataset.py
 python 06_analyze.py
 python 07_figures.py
+python 08_validation.py agreement
+python 08_validation.py sample       # then review the records and save data/manual_review_completed.csv
+python 08_validation.py score
 ```
+
+To run on the public sample instead of the full corpus, prefix each command with `CORPUS=data/sample_100k.csv`,
+e.g. `CORPUS=data/sample_100k.csv python 02_extract.py --limit 100`.
 
 ## Data
 

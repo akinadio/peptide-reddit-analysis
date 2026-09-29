@@ -1,37 +1,24 @@
 """Step 2 — structured extraction with the primary model (GPT-4o-mini, temperature 0, JSON schema).
 
-Records of >=50 characters are prioritised (first-person posts naming a peptide first, then other posts, then
-comments; longest first within each tier) up to one million records. One JSON file is cached per record, so the
-run is resumable.
+Every record in the study communities and period is extracted, except records from excluded accounts and identical
+text reposted by the same account (see corpus.py). One JSON file is cached per record, so the run is resumable and
+records extracted in earlier runs are not sent again.
 
     python 02_extract.py               # full run
     python 02_extract.py --limit 100   # smoke test
+    CORPUS=data/sample_100k.csv python 02_extract.py --limit 100   # smoke test on the public sample
 """
-import argparse, asyncio, csv, json, os, re
+import argparse, asyncio, json, os
 from openai import AsyncOpenAI
 from dotenv import load_dotenv
 from tqdm.asyncio import tqdm
-import config as C, prompt as Pm
-
-FIRST_PERSON = re.compile(r"\b(I|i'm|my|me|myself)\b")
-NAMED = re.compile(r"\b(bpc[-\s]?157|tb[-\s]?500|thymosin|ipamorelin|cjc[-\s]?1295|sermorelin|tesamorelin|ghk[-\s]?cu|mgf|ghrp[-\s]?6|"
-                   r"kpv|aod[-\s]?9604|igf[-\s]?1\s*lr3|semaglutide|tirzepatide|retatrutide|melanotan|pt[-\s]?141|selank|semax|"
-                   r"epitalon|hexarelin|hgh|dsip|ss[-\s]?31|cerebrolysin|mots[-\s]?c)\b", re.I)
-
-
-def tier(r):
-    text = f"{r['title']} {r['body']}".strip()
-    post, fp, pep, long = r["kind"] == "post", bool(FIRST_PERSON.search(text)), bool(NAMED.search(text)), len(text) >= 150
-    order = [(post and fp and pep), (post and fp), (post and pep), (fp and pep), post, fp, pep]
-    return next((i + 1 for i, hit in enumerate(order) if long and hit), 8), -len(text)
+import config as C, prompt as Pm, corpus
 
 
 def select(limit=None):
-    csv.field_size_limit(1 << 28)
-    rows = [r for r in csv.DictReader(open(C.RAW_CSV, encoding="utf-8"))
-            if len(f"{r['title']} {r['body']}".strip()) >= C.MIN_CHARS]
-    rows = sorted(rows, key=tier)[:C.TARGET_RECORDS]
+    rows = corpus.eligible_for_extraction().to_dict("records")
     todo = [r for r in rows if not (C.PRIMARY_DIR / f"{r['id']}.json").exists()]
+    print(f"{len(rows):,} eligible records; {len(rows) - len(todo):,} already extracted")
     return todo[:limit] if limit else todo
 
 

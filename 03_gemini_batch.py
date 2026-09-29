@@ -2,7 +2,7 @@
 
 Resumable: state is kept in data/gemini_state.json; results are written to data/gemini_results/*.jsonl.
 
-    python 03_gemini_batch.py prepare     # one request per record sent to the primary model
+    python 03_gemini_batch.py prepare     # one request per record sent to the primary model (skips records already queued)
     python 03_gemini_batch.py run         # submit, poll and download until finished
 """
 import csv, json, os, sys, time
@@ -17,8 +17,11 @@ save = lambda s: json.dump(s, open(STATE, "w"), indent=1)
 
 
 def prepare(chunk=7000):
-    todo = {p.name.split(".")[0] for p in C.PRIMARY_DIR.iterdir()}          # every record sent to the primary model
-    REQ.mkdir(parents=True, exist_ok=True); s, buf = state(), []
+    """Queues every record sent to the primary model that is not already in a prepared chunk (safe to re-run)."""
+    s, buf = state(), []
+    queued = {json.loads(l)["key"] for c in s["chunks"] for l in open(c["file"], encoding="utf-8") if l.strip()}
+    todo = {p.name.split(".")[0] for p in C.PRIMARY_DIR.iterdir()} - queued   # every record sent to the primary model
+    REQ.mkdir(parents=True, exist_ok=True)
     csv.field_size_limit(1 << 28)
     def flush():
         path = REQ / f"chunk_{len(s['chunks']):04d}.jsonl"
@@ -32,7 +35,7 @@ def prepare(chunk=7000):
                 "generation_config": {"temperature": 0, "response_mime_type": "application/json"}}})
             if len(buf) == chunk: flush()
     if buf: flush()
-    save(s); print(f"{len(todo):,} records in {len(s['chunks'])} chunks")
+    save(s); print(f"{len(todo):,} new records queued; {len(s['chunks'])} chunks in total")
 
 
 def run(poll=60, max_active=10):
