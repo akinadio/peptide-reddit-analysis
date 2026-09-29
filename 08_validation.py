@@ -1,8 +1,8 @@
-"""Step 8 — extraction validation -> data/validation.json.
+"""Step 8 — extraction validation -> <run>/validation.json (<run> = config.RUN_DIR).
 
     python 08_validation.py agreement   # model agreement, omissions and adjudication (no API calls)
-    python 08_validation.py sample      # draw the manual-review sample -> data/manual_review_sample.csv
-    python 08_validation.py score       # compare data/manual_review_completed.csv with the consensus
+    python 08_validation.py sample      # draw the manual-review sample -> <run>/manual_review_sample.csv
+    python 08_validation.py score       # compare <run>/manual_review_completed.csv with the consensus
 
 agreement: for every compared field, agreement between GPT-4o-mini and Gemini 2.5 Flash-Lite over all records
   extracted by both models (both empty counts as agreement) and over records where at least one model returned a
@@ -10,7 +10,8 @@ agreement: for every compared field, agreement between GPT-4o-mini and Gemini 2.
   consensus, how many disputed fields were resolved by majority and how many had no majority.
 sample: config.REVIEW_N records drawn at random (seed config.REVIEW_SEED) from the analytic sample. One row per
   record and compared field, with the consensus value; the reviewer fills `reviewer_value` from the original text and
-  saves the file as data/manual_review_completed.csv. The record ids are also written to data/manual_review_ids.csv.
+  saves the file as <run>/manual_review_completed.csv. The record ids are also written to <run>/manual_review_ids.csv and
+  data/manual_review_ids.csv (committed to the repository).
 score: proportion of (record, field) pairs on which the reviewer and the consensus agree, overall and by field.
 """
 import json, sys
@@ -18,7 +19,7 @@ import duckdb, pandas as pd
 import config as C, corpus
 from definitions import norm
 
-OUT = C.DATA / "validation.json"
+OUT = C.VALIDATION
 update = lambda k, v: OUT.write_text(json.dumps((json.loads(OUT.read_text()) if OUT.exists() else {}) | {k: v}, indent=1))
 
 
@@ -58,13 +59,13 @@ def sample():
     val = lambda v: "|".join(map(str, v)) if isinstance(v, list) else ("" if v is None else v)
     rows = [{"id": i, **text.loc[i].to_dict(), "field": f, "consensus_value": val(cons.get(i, {}).get(f)), "reviewer_value": ""}
             for i in pick for f in C.COMPARE_FIELDS]
-    pd.DataFrame(rows).to_csv(C.DATA / "manual_review_sample.csv", index=False)
-    pick.to_frame().to_csv(C.DATA / "manual_review_ids.csv", index=False)
-    print(f"{len(pick)} records x {len(C.COMPARE_FIELDS)} fields -> data/manual_review_sample.csv")
+    pd.DataFrame(rows).to_csv(C.RUN_DIR / "manual_review_sample.csv", index=False)
+    for d in (C.RUN_DIR, C.DATA): pick.to_frame().to_csv(d / "manual_review_ids.csv", index=False)
+    print(f"{len(pick)} records x {len(C.COMPARE_FIELDS)} fields -> {C.RUN_DIR / 'manual_review_sample.csv'}")
 
 
 def score():
-    d = pd.read_csv(C.DATA / "manual_review_completed.csv", dtype=str, keep_default_na=False)
+    d = pd.read_csv(C.RUN_DIR / "manual_review_completed.csv", dtype=str, keep_default_na=False)
     d["agree"] = [norm(f, a) == norm(f, b) for f, a, b in zip(d.field, d.consensus_value, d.reviewer_value)]
     res = {"records": int(d.id.nunique()), "pairs": len(d), "agreement_pct": round(d.agree.mean() * 100, 1),
            "by_field_pct": (d.groupby("field").agree.mean() * 100).round(1).to_dict()}

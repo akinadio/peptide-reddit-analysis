@@ -1,4 +1,4 @@
-"""Step 6 — all numbers reported in the Results, Table 1, Table 2 and the figures -> data/results.json.
+"""Step 6 — all numbers reported in the Results, Table 1, Table 2 and the figures -> <run>/results.json.
 
 Analysis population: the analytic sample built by 05_build_dataset.py (one record per user; see data/flow.json).
 Each field's denominator is the records that addressed it. Figure 1 counts discussion volume: every retrieved post
@@ -85,5 +85,5 @@ FIG2 = {"GLP-1/GIP receptor agonists": P.category.str.startswith("GLP-1"), "Tiss
 FIG2["Other peptides"] = ~(FIG2["GLP-1/GIP receptor agonists"] | FIG2["Tissue-repair and skin peptides"] | FIG2["Growth-hormone axis peptides"])
 R["figure2"] = {f: {g: dist(f, P[m]) for g, m in FIG2.items()} for f in ("believed_effective", "would_use_again", "would_recommend")}
 
-C.DATA.joinpath("results.json").write_text(json.dumps(R, indent=1, default=str))
+C.RESULTS.write_text(json.dumps(R, indent=1, default=str))
 print(json.dumps(R["flow"], indent=1))

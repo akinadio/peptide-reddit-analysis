@@ -19,18 +19,32 @@ figure reported in the paper.
 | 2 | `02_extract.py` | Extraction with GPT-4o-mini |
 | 3 | `03_gemini_batch.py` | Independent extraction with Gemini 2.5 Flash-Lite (Batch API) |
 | 4 | `04_adjudicate.py` | Compares the two, adjudicates disagreements with Claude Sonnet 4.6 (Batch API), writes the consensus |
-| 5 | `05_build_dataset.py` | Classifies peptides, applies the exclusions in order and keeps one record per user → `data/flow.json` |
-| 6 | `06_analyze.py` | All reported statistics, Table 1, Table 2 and figure data → `data/results.json` |
+| 5 | `05_build_dataset.py` | Classifies peptides, applies the exclusions in order and keeps one record per user → `<run>/flow.json` |
+| 6 | `06_analyze.py` | All reported statistics, Table 1, Table 2 and figure data → `<run>/results.json` |
 | 7 | `07_figures.py` | Figures 1–3 and Supplementary Figure 1 (record flow) |
-| 8 | `08_validation.py` | Model agreement, omissions, adjudication and manual-review agreement → `data/validation.json` |
+| 8 | `08_validation.py` | Model agreement, omissions, adjudication and manual-review agreement → `<run>/validation.json` |
 
 Shared definitions: `config.py` (paths, communities, study period, models, compared fields), `corpus.py` (corpus loading,
 account and duplicate exclusions), `prompt.py` (prompt and schema), `definitions.py` (peptide categories, adverse-event
 groups, recodes, value comparison).
 
+## Run folders
+
+Every model output and result is written to one run folder, `data/runs/<corpus>_<fingerprint>/` (`<run>` above).
+The fingerprint is a hash of the three models, temperature, truncation length, prompt, schema and compared fields, so:
+
+- a run never reuses model outputs from a run made with different settings;
+- outputs from before run folders existed (`data/llm_outputs`, `data/gemini_results`, `data/claude_batches`) are never read;
+- an interrupted run resumes in its own folder (records already extracted *in that run* are not sent again);
+- `RUN_TAG=<name>` forces a separate, fresh run folder even with identical settings;
+- the public sample (`CORPUS=data/sample_100k.csv`) gets its own folder and never mixes with the full corpus.
+
+`<run>/run_manifest.json` records the settings, the dates of each step, the model version returned by each API
+(e.g. the dated snapshot behind `gpt-4o-mini`), record counts and the record flow, for reporting in the Methods.
+
 ## Study population
 
-Records are counted at the first exclusion that applies (Supplementary Figure 1, `data/flow.json`):
+Records are counted at the first exclusion that applies (Supplementary Figure 1, `<run>/flow.json`):
 
 1. records from deleted, AutoModerator, bot and moderator-team accounts;
 2. identical text reposted by the same account (earliest copy kept);
@@ -49,7 +63,7 @@ python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 cp .env.example .env          # add OPENAI_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY
 python 01_scrape.py
-python 02_extract.py --limit 100     # smoke test, then without --limit (already-extracted records are skipped)
+python 02_extract.py --limit 100     # smoke test, then without --limit (resumes within the same run folder)
 python 03_gemini_batch.py prepare && python 03_gemini_batch.py run
 python 04_adjudicate.py estimate     # number of disputed records and cost estimate
 python 04_adjudicate.py submit       # then re-run `collect` until all batches are collected
@@ -59,7 +73,7 @@ python 05_build_dataset.py
 python 06_analyze.py
 python 07_figures.py
 python 08_validation.py agreement
-python 08_validation.py sample       # then review the records and save data/manual_review_completed.csv
+python 08_validation.py sample       # then review the records and save <run>/manual_review_completed.csv
 python 08_validation.py score
 ```
 

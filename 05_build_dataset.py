@@ -1,4 +1,4 @@
-"""Step 5 — build the analysis table (data/peptides.duckdb, table `records`) and the record flow (data/flow.json).
+"""Step 5 — build the analysis table (<run>/peptides.duckdb, table `records`) and the record flow (<run>/flow.json).
 
 Each retrieved record is assigned a peptide category (comments that name no substance inherit the substance of the
 post they reply to) and is then counted at the first exclusion that applies, in this order:
@@ -57,7 +57,7 @@ def main():
             "analysed_users": int(a.author.nunique()), "start_utc": int(df.created_utc.min()), "end_utc": int(df.created_utc.max())}
     assert flow["analysed"] == flow["analysed_users"], "analytic sample must contain one record per user"
     assert flow["retrieved"] == flow["analysed"] + sum(flow[s] for s in STEPS)
-    C.FLOW.write_text(json.dumps(flow, indent=1))
+    C.FLOW.write_text(json.dumps(flow, indent=1)); C.manifest(flow=flow)
 
     df["yr"] = pd.to_datetime(df.created_utc, unit="s", utc=True).dt.year
     out = df.drop(columns=["title", "body", "permalink"], errors="ignore")

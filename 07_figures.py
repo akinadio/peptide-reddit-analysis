@@ -1,4 +1,4 @@
-"""Step 7 — Figures 1–3 and Supplementary Figure 1 (record flow) from data/results.json
+"""Step 7 — Figures 1–3 and Supplementary Figure 1 (record flow) from <run>/results.json
 (Okabe–Ito palette; PNG 600 dpi, SVG and PDF).
 
     python 07_figures.py
@@ -8,11 +8,11 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt, matplotlib.ticker as tk
 import config as C
 
-R = json.loads((C.DATA / "results.json").read_text())
+R = json.loads(C.RESULTS.read_text())
 plt.rcParams.update({"font.family": "serif", "font.serif": ["Times New Roman", "Liberation Serif"], "font.size": 9,
                      "svg.fonttype": "none", "pdf.fonttype": 42, "axes.spines.top": False, "axes.spines.right": False})
 BLUE, ORANGE, GREY = "#0072B2", "#E69F00", "#999999"
-OUT = C.DATA / "figures"; OUT.mkdir(exist_ok=True)
+OUT = C.FIGURES; OUT.mkdir(parents=True, exist_ok=True)
 
 
 def save(fig, name):

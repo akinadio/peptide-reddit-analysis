@@ -8,9 +8,11 @@ fields on which all three disagree keep the primary value and are flagged.
     python 04_adjudicate.py estimate    # count disputed records and estimate cost (no API calls)
     python 04_adjudicate.py submit      # send disputed records to Claude in batches of 20,000
     python 04_adjudicate.py collect     # download finished batches (re-run until all are collected)
-    python 04_adjudicate.py consensus   # write data/consensus.jsonl
+    python 04_adjudicate.py consensus   # write <run>/consensus.jsonl
 """
 import csv, json, os, sys
+from collections import Counter
+from datetime import datetime, timezone
 import anthropic
 from dotenv import load_dotenv
 import config as C, prompt as Pm
@@ -70,12 +72,17 @@ def collect():
     done = json.loads(BATCHES.read_text())
     for b in done:
         if b["collected"] or client.messages.batches.retrieve(b["id"]).processing_status != "ended": continue
+        versions = Counter()
         with open(C.CLAUDE_DIR / f"{b['id']}.jsonl", "w") as f:
             for r in client.messages.batches.results(b["id"]):
+                if r.result.type == "succeeded": versions[r.result.message.model] += 1
                 try: data = Pm.parse_json(r.result.message.content[0].text) if r.result.type == "succeeded" else None
                 except Exception: data = None
                 f.write(json.dumps({"id": r.custom_id, "data": data}, ensure_ascii=False) + "\n")
         b["collected"] = True; BATCHES.write_text(json.dumps(done)); print("collected", b["id"])
+        prev = C.manifest().get("adjudicator_model_versions", {})
+        C.manifest(adjudicator_model_versions={m: prev.get(m, 0) + n for m, n in versions.items()},
+                   adjudicator_last_collected_utc=datetime.now(timezone.utc).isoformat(timespec="seconds"))
     print(sum(b["collected"] for b in done), "of", len(done), "batches collected")
 
 
@@ -92,7 +99,7 @@ def consensus():
                 else: final[f] = a.get(f); flagged.append(f)   # no majority: keep primary, flag
             stats["records"] += 1; stats["adjudicated_fields"] += len(fields); stats["no_majority_fields"] += len(flagged)
             out.write(json.dumps({"id": rid, "no_majority": flagged, **final}, ensure_ascii=False) + "\n")
-    print(stats)
+    C.manifest(consensus=stats); print(stats)
 
 
 if __name__ == "__main__":
